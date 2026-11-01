@@ -1,15 +1,15 @@
 public class Consulta {
     private Animal paciente;
-    private int horario;
+    private int horarioIndex;
     private String sintomas;
 
-    public Consulta(Animal paciente, int horario, String sintomas) {
+    public Consulta(Animal paciente, int horarioIndex, String sintomas) {
         this.paciente = null;
-        this.horario = 0;
+        this.horarioIndex = -1;
         this.sintomas = "";
 
         setPaciente(paciente);
-        setHorario(horario);
+        setHorarioIndex(horarioIndex);
         setSintomas(sintomas);
     }
 
@@ -23,13 +23,13 @@ public class Consulta {
         }
     }
 
-    public int getHorario() {
-        return horario;
+    public int getHorarioIndex() {
+        return horarioIndex;
     }
 
-    public void setHorario(int horario) {
-        if (horario >= 1 && horario <= 10) {
-            this.horario = horario;
+    public void setHorarioIndex(int horarioIndex) {
+        if (horarioIndex >= 0 && horarioIndex <= 9) {
+            this.horarioIndex = horarioIndex;
         }
     }
 
@@ -46,22 +46,30 @@ public class Consulta {
     public boolean dadosValidos() {
         return paciente != null
                 && paciente.dadosValidos()
-                && horario >= 1
-                && horario <= 10
+                && horarioIndex >= 0
+                && horarioIndex <= 9
                 && sintomas != null
                 && sintomas.trim().length() > 0;
     }
 
-    public void exibirDados() {
+    public String getResumo() {
         if (!dadosValidos()) {
-            System.out.println("Erro: não é possível exibir uma consulta com dados inválidos.");
-        } else {
-            System.out.println("Horário: " + horario + " - " + AgendaManager.getHorarioTexto(horario - 1));
-            System.out.println("Tipo de paciente: " + paciente.getTipo());
-            paciente.exibirDadosComuns();
-            System.out.println(paciente.getInformacaoEspecifica());
-            System.out.println("Queixa principal: " + sintomas);
-            System.out.println("Som emitido: " + paciente.emitirSom());
+            return "[Dados inválidos]";
         }
+        return paciente.getNome()
+                + " | " + paciente.getTipo()
+                + " | Tutor: " + paciente.getNomeDono()
+                + " | Som: " + paciente.emitirSom();
+    }
+
+    public String getDetalhes() {
+        if (!dadosValidos()) {
+            return "Não é possível exibir uma consulta com dados inválidos.";
+        }
+        return "Tipo de paciente: " + paciente.getTipo() + "\n"
+                + paciente.getDadosComuns() + "\n"
+                + paciente.getInformacaoEspecifica() + "\n"
+                + "Sintomas: " + sintomas + "\n"
+                + "Som emitido: " + paciente.emitirSom();
     }
 }

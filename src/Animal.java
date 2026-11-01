@@ -56,7 +56,7 @@ public abstract class Animal {
         }
     }
 
-    private boolean telefoneValido(String telefone) {
+    public static boolean telefoneValido(String telefone) {
         if (telefone == null) {
             return false;
         }
@@ -90,16 +90,18 @@ public abstract class Animal {
         return dadosComunsValidos();
     }
 
-    public void exibirDadosComuns() {
-        System.out.println("Paciente: " + nome);
-        System.out.println("Idade: " + idade);
-        System.out.println("Tutor: " + nomeDono);
-        System.out.println("Telefone do tutor: " + telefoneDono);
+    public String getDadosComuns() {
+        return "Paciente: " + nome + "\n"
+                + "Idade: " + idade + "\n"
+                + "Tutor: " + nomeDono + "\n"
+                + "Telefone do tutor: " + telefoneDono;
     }
 
     public abstract String emitirSom();
 
     public abstract String getTipo();
+
+    public abstract String getCaracteristica();
 
     public abstract String getInformacaoEspecifica();
 }

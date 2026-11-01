@@ -41,6 +41,11 @@ public class Cachorro extends Animal {
     }
 
     @Override
+    public String getCaracteristica() {
+        return porte;
+    }
+
+    @Override
     public String getInformacaoEspecifica() {
         return "Porte: " + porte;
     }

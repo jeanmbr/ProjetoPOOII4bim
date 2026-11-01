@@ -1,262 +1,291 @@
-import java.util.Scanner;
+import javax.swing.JOptionPane;
+import java.sql.SQLException;
 
 public class Main {
-    private static Scanner scanner = new Scanner(System.in);
+    private static final String TITULO = "Clínica Veterinária";
+    private static final int CANCELADO = -1;
 
     public static void main(String[] args) {
-        int opcao = -1;
+        try {
+            AgendaManager.montarTextoAgenda();
+        } catch (SQLException e) {
+            mostrarErro("Não foi possível conectar ao banco de dados.\n" + e.getMessage());
+            return;
+        }
 
-        System.out.println("Sistema de Agendamento da Clínica Veterinária");
+        String[] botoes = {"Agendar Consulta", "Ver Agenda Diária", "Cancelar Agendamento",
+                "Alterar Agendamento", "Sair"};
+        int opcao;
 
-        while (opcao != 0) {
-            exibirMenu();
-            opcao = lerInteiroEntre("Escolha uma opção: ", 0, 4);
+        do {
+            opcao = JOptionPane.showOptionDialog(null, "Escolha uma opção:", TITULO,
+                    JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, botoes, botoes[0]);
 
-            if (opcao == 1) {
-                executarAgendamento();
-            } else if (opcao == 2) {
-                AgendaManager.listar();
-            } else if (opcao == 3) {
-                executarEdicao();
-            } else if (opcao == 4) {
-                executarCancelamento();
-            } else {
-                System.out.println("Sistema encerrado.");
+            try {
+                if (opcao == 0) {
+                    executarAgendamento();
+                } else if (opcao == 1) {
+                    JOptionPane.showMessageDialog(null, AgendaManager.montarTextoAgenda(),
+                            "Agenda Diária", JOptionPane.INFORMATION_MESSAGE);
+                } else if (opcao == 2) {
+                    executarCancelamento();
+                } else if (opcao == 3) {
+                    executarAlteracao();
+                }
+            } catch (AgendaException e) {
+                if (e.isAviso()) {
+                    mostrarAviso(e.getMessage());
+                } else {
+                    mostrarErro(e.getMessage());
+                }
+            } catch (SQLException e) {
+                mostrarErro("Erro ao acessar o banco de dados:\n" + e.getMessage());
+            } catch (Exception e) {
+                mostrarErro("Erro inesperado: " + e.toString());
+            }
+        } while (opcao != 4 && opcao != JOptionPane.CLOSED_OPTION);
+
+        mostrarInfo("Sistema encerrado.");
+    }
+
+    private static void executarAgendamento() throws AgendaException, SQLException {
+        AgendaManager.verificarAgendaNaoLotada();
+
+        int indice = lerHorarioLivre();
+        if (indice == CANCELADO) {
+            operacaoCancelada();
+            return;
+        }
+
+        Animal paciente = lerPaciente();
+        if (paciente == null) {
+            operacaoCancelada();
+            return;
+        }
+
+        String sintomas = lerTexto("Informe os sintomas ou a queixa principal:", 255);
+        if (sintomas == null) {
+            operacaoCancelada();
+            return;
+        }
+
+        Consulta consulta = new Consulta(paciente, indice, sintomas);
+        if (confirmar("Confirmar agendamento?\n\nHorário: " + indice + " - "
+                + AgendaManager.getHorarioTexto(indice) + "\n" + consulta.getDetalhes())) {
+            AgendaManager.agendar(consulta);
+            mostrarInfo("Consulta agendada com sucesso.");
+        } else {
+            operacaoCancelada();
+        }
+    }
+
+    private static void executarCancelamento() throws AgendaException, SQLException {
+        int indice = lerInteiro(AgendaManager.montarTextoAgenda()
+                + "\nInforme o horário que deseja cancelar (0 a 9):", 0, 9);
+        if (indice == CANCELADO) {
+            operacaoCancelada();
+            return;
+        }
+
+        Consulta consulta = AgendaManager.buscarConsultaOcupada(indice);
+        if (confirmar("Confirmar cancelamento desta consulta?\n\n" + consulta.getDetalhes())) {
+            AgendaManager.cancelar(indice);
+            mostrarInfo("Consulta cancelada. Horário liberado.");
+        } else {
+            operacaoCancelada();
+        }
+    }
+
+    private static void executarAlteracao() throws AgendaException, SQLException {
+        int indice = lerInteiro(AgendaManager.montarTextoAgenda()
+                + "\nInforme o horário que deseja alterar (0 a 9):", 0, 9);
+        if (indice == CANCELADO) {
+            operacaoCancelada();
+            return;
+        }
+
+        Consulta atual = AgendaManager.buscarConsultaOcupada(indice);
+        mostrarInfo("Dados atuais:\n\n" + atual.getDetalhes() + "\n\nInforme a seguir os novos dados.");
+
+        Animal paciente = lerPaciente();
+        if (paciente == null) {
+            operacaoCancelada();
+            return;
+        }
+
+        String sintomas = lerTexto("Informe os novos sintomas ou queixa principal:", 255);
+        if (sintomas == null) {
+            operacaoCancelada();
+            return;
+        }
+
+        Consulta nova = new Consulta(paciente, indice, sintomas);
+        if (confirmar("Confirmar alteração?\n\n" + nova.getDetalhes())) {
+            AgendaManager.alterar(nova);
+            mostrarInfo("Consulta alterada com sucesso.");
+        } else {
+            operacaoCancelada();
+        }
+    }
+
+    private static int lerHorarioLivre() throws SQLException {
+        while (true) {
+            int indice = lerInteiro("Horários disponíveis:\n" + AgendaManager.montarTextoHorariosLivres()
+                    + "\nEscolha um horário (0 a 9):", 0, 9);
+            if (indice == CANCELADO) {
+                return CANCELADO;
+            }
+            try {
+                AgendaManager.verificarHorarioLivre(indice);
+                return indice;
+            } catch (AgendaException e) {
+                mostrarErro(e.getMessage());
             }
         }
-
-        scanner.close();
-    }
-
-    private static void exibirMenu() {
-        System.out.println();
-        System.out.println("============== MENU ==============");
-        System.out.println("1 - Agendar consulta");
-        System.out.println("2 - Consultar agenda");
-        System.out.println("3 - Editar agendamento");
-        System.out.println("4 - Cancelar consulta");
-        System.out.println("0 - Sair");
-        System.out.println("==================================");
-    }
-
-    private static void executarAgendamento() {
-        AgendaManager.listarHorarios();
-
-        if (AgendaManager.estaCheia()) {
-            System.out.println("A agenda está cheia. Não é possível cadastrar outra consulta.");
-            return;
-        }
-
-        int horario = lerHorarioLivre();
-        Animal paciente = lerPaciente();
-        String sintomas = lerTextoObrigatorio("Informe os sintomas ou a queixa principal: ");
-
-        Consulta consulta = new Consulta(paciente, horario, sintomas);
-
-        System.out.println();
-        System.out.println("Confira os dados do novo agendamento:");
-        consulta.exibirDados();
-
-        if (confirmar("Confirmar agendamento? (S/N): ")) {
-            AgendaManager.agendar(horario - 1, consulta);
-        } else {
-            System.out.println("Operação cancelada. Nenhum dado foi alterado.");
-        }
-    }
-
-    private static void executarEdicao() {
-        AgendaManager.listar();
-        int horario = lerInteiroEntre("Informe o horário que deseja editar (1 a 10): ", 1, 10);
-        int indice = horario - 1;
-
-        if (!AgendaManager.horarioOcupado(indice)) {
-            System.out.println("Não existe consulta cadastrada neste horário.");
-            return;
-        }
-
-        System.out.println();
-        System.out.println("Dados atuais:");
-        AgendaManager.exibirConsulta(indice);
-
-        System.out.println();
-        System.out.println("Informe todos os novos dados da consulta:");
-        Animal pacienteAtualizado = lerPaciente();
-        String sintomasAtualizados = lerTextoObrigatorio("Informe os novos sintomas ou queixa principal: ");
-        Consulta consultaAtualizada = new Consulta(pacienteAtualizado, horario, sintomasAtualizados);
-
-        System.out.println();
-        System.out.println("Confira os novos dados:");
-        consultaAtualizada.exibirDados();
-
-        if (confirmar("Confirmar edição? (S/N): ")) {
-            AgendaManager.editar(indice, pacienteAtualizado, sintomasAtualizados);
-        } else {
-            System.out.println("Operação cancelada. Nenhum dado foi alterado.");
-        }
-    }
-
-    private static void executarCancelamento() {
-        AgendaManager.listar();
-        int horario = lerInteiroEntre("Informe o horário que deseja cancelar (1 a 10): ", 1, 10);
-        int indice = horario - 1;
-
-        if (!AgendaManager.horarioOcupado(indice)) {
-            System.out.println("Não existe consulta cadastrada neste horário.");
-            return;
-        }
-
-        System.out.println();
-        System.out.println("Consulta que será cancelada:");
-        AgendaManager.exibirConsulta(indice);
-
-        if (confirmar("Confirmar cancelamento? (S/N): ")) {
-            AgendaManager.excluir(indice);
-        } else {
-            System.out.println("Operação cancelada. Nenhum dado foi alterado.");
-        }
-    }
-
-    private static int lerHorarioLivre() {
-        int horario = lerInteiroEntre("Escolha um horário disponível (1 a 10): ", 1, 10);
-
-        while (AgendaManager.horarioOcupado(horario - 1)) {
-            System.out.println("Este horário já está ocupado.");
-            horario = lerInteiroEntre("Escolha outro horário (1 a 10): ", 1, 10);
-        }
-
-        return horario;
     }
 
     private static Animal lerPaciente() {
-        int tipo = lerInteiroEntre("Tipo do paciente (1 - Cachorro, 2 - Gato): ", 1, 2);
-        String nome = lerTextoObrigatorio("Nome do animal: ");
+        String[] especies = {"Cachorro", "Gato"};
+        int tipo = JOptionPane.showOptionDialog(null, "Tipo do paciente:", TITULO,
+                JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, especies, especies[0]);
+        if (tipo != 0 && tipo != 1) {
+            return null;
+        }
+
+        String nome = lerTexto("Nome do animal:", 100);
+        if (nome == null) {
+            return null;
+        }
+
         int idade;
-
-        if (tipo == 1) {
-            idade = lerInteiroEntre("Idade do cachorro (0 a 29 anos): ", 0, 29);
+        if (tipo == 0) {
+            idade = lerInteiro("Idade do cachorro (0 a 29 anos):", 0, 29);
         } else {
-            idade = lerInteiroEntre("Idade do gato (0 a 38 anos): ", 0, 38);
+            idade = lerInteiro("Idade do gato (0 a 38 anos):", 0, 38);
+        }
+        if (idade == CANCELADO) {
+            return null;
         }
 
-        String nomeDono = lerTextoObrigatorio("Nome do tutor: ");
-        String telefoneDono = lerTelefone();
-
-        if (tipo == 1) {
-            String porte = lerPorte();
-            return new Cachorro(nome, idade, nomeDono, telefoneDono, porte);
+        String nomeDono = lerTexto("Nome do tutor:", 100);
+        if (nomeDono == null) {
+            return null;
         }
 
-        String temperamento = lerTemperamento();
-        return new Gato(nome, idade, nomeDono, telefoneDono, temperamento);
+        String telefone = lerTelefone();
+        if (telefone == null) {
+            return null;
+        }
+
+        Animal paciente;
+        if (tipo == 0) {
+            String porte = escolherOpcao("Porte do cachorro:", new String[]{"Pequeno", "Médio", "Grande"});
+            if (porte == null) {
+                return null;
+            }
+            paciente = new Cachorro(nome, idade, nomeDono, telefone, porte);
+        } else {
+            String temperamento = escolherOpcao("Temperamento do gato:", new String[]{"Dócil", "Arredio"});
+            if (temperamento == null) {
+                return null;
+            }
+            paciente = new Gato(nome, idade, nomeDono, telefone, temperamento);
+        }
+
+        if (!paciente.dadosValidos()) {
+            mostrarErro("Os dados do paciente são inválidos.");
+            return null;
+        }
+        return paciente;
     }
 
-    private static String lerPorte() {
-        System.out.println("Porte do cachorro:");
-        System.out.println("1 - Pequeno");
-        System.out.println("2 - Médio");
-        System.out.println("3 - Grande");
-        int opcao = lerInteiroEntre("Escolha o porte: ", 1, 3);
-
-        if (opcao == 1) {
-            return "Pequeno";
-        } else if (opcao == 2) {
-            return "Médio";
-        }
-        return "Grande";
-    }
-
-    private static String lerTemperamento() {
-        System.out.println("Temperamento do gato:");
-        System.out.println("1 - Dócil");
-        System.out.println("2 - Arredio");
-        int opcao = lerInteiroEntre("Escolha o temperamento: ", 1, 2);
-
-        if (opcao == 1) {
-            return "Dócil";
-        }
-        return "Arredio";
-    }
-
-    private static String lerTextoObrigatorio(String mensagem) {
-        String texto = "";
-
-        while (texto.length() == 0) {
-            System.out.print(mensagem);
-            texto = scanner.nextLine().trim();
+    private static String lerTexto(String mensagem, int tamanhoMaximo) {
+        while (true) {
+            String texto = JOptionPane.showInputDialog(null, mensagem, TITULO, JOptionPane.QUESTION_MESSAGE);
+            if (texto == null) {
+                return null;
+            }
+            texto = texto.trim();
             if (texto.length() == 0) {
-                System.out.println("Este campo não pode ficar vazio.");
+                mostrarErro("Este campo não pode ficar vazio.");
+            } else if (texto.length() > tamanhoMaximo) {
+                mostrarErro("Texto muito longo. Use no máximo " + tamanhoMaximo + " caracteres.");
+            } else {
+                return texto;
             }
         }
+    }
 
-        return texto;
+    private static int lerInteiro(String mensagem, int minimo, int maximo) {
+        int valor = 0;
+        boolean ok = false;
+
+        do {
+            String texto = JOptionPane.showInputDialog(null, mensagem, TITULO, JOptionPane.QUESTION_MESSAGE);
+            if (texto == null) {
+                return CANCELADO;
+            }
+            texto = texto.trim();
+
+            if (texto.length() == 0) {
+                mostrarErro("O valor não pode ficar vazio.");
+            } else {
+                try {
+                    valor = Integer.parseInt(texto);
+                    if (valor >= minimo && valor <= maximo) {
+                        ok = true;
+                    } else {
+                        mostrarErro("Valor inválido. Digite um número entre " + minimo + " e " + maximo + ".");
+                    }
+                } catch (NumberFormatException e) {
+                    mostrarErro("Entrada inválida. Digite somente números inteiros.");
+                }
+            }
+        } while (!ok);
+
+        return valor;
     }
 
     private static String lerTelefone() {
-        String telefone = "";
-        boolean valido = false;
-
-        while (!valido) {
-            System.out.print("Telefone do tutor (8 a 11 dígitos): ");
-            telefone = scanner.nextLine().trim();
-
-            if (telefone.length() < 8 || telefone.length() > 11) {
-                System.out.println("Telefone inválido. Digite entre 8 e 11 números.");
-            } else if (!somenteDigitos(telefone)) {
-                System.out.println("Telefone inválido. Digite somente números.");
-            } else {
-                valido = true;
-            }
-        }
-
-        return telefone;
-    }
-
-    private static int lerInteiroEntre(String mensagem, int minimo, int maximo) {
         while (true) {
-            System.out.print(mensagem);
-            String texto = scanner.nextLine().trim();
-
-            if (texto.length() == 0) {
-                System.out.println("Entrada inválida. O valor não pode ficar vazio.");
-            } else if (texto.length() > 9 || !somenteDigitos(texto)) {
-                System.out.println("Entrada inválida. Digite somente números inteiros.");
-            } else {
-                int valor = Integer.parseInt(texto);
-                if (valor >= minimo && valor <= maximo) {
-                    return valor;
-                }
-                System.out.println("Valor inválido. Digite um número entre " + minimo + " e " + maximo + ".");
+            String telefone = lerTexto("Telefone do tutor (8 a 11 dígitos, somente números):", 11);
+            if (telefone == null) {
+                return null;
             }
+            if (Animal.telefoneValido(telefone)) {
+                return telefone;
+            }
+            mostrarErro("Telefone inválido. Digite de 8 a 11 números.");
         }
     }
 
-    private static boolean somenteDigitos(String texto) {
-        if (texto == null || texto.length() == 0) {
-            return false;
+    private static String escolherOpcao(String mensagem, String[] opcoes) {
+        Object escolha = JOptionPane.showInputDialog(null, mensagem, TITULO,
+                JOptionPane.QUESTION_MESSAGE, null, opcoes, opcoes[0]);
+        if (escolha == null) {
+            return null;
         }
-
-        for (int i = 0; i < texto.length(); i++) {
-            int codigo = texto.codePointAt(i);
-            if (codigo < 48 || codigo > 57) {
-                return false;
-            }
-        }
-
-        return true;
+        return (String) escolha;
     }
 
     private static boolean confirmar(String mensagem) {
-        while (true) {
-            System.out.print(mensagem);
-            String resposta = scanner.nextLine().trim();
+        int resposta = JOptionPane.showConfirmDialog(null, mensagem, TITULO, JOptionPane.YES_NO_OPTION);
+        return resposta == JOptionPane.YES_OPTION;
+    }
 
-            if (resposta.equalsIgnoreCase("S")) {
-                return true;
-            } else if (resposta.equalsIgnoreCase("N")) {
-                return false;
-            }
+    private static void operacaoCancelada() {
+        mostrarInfo("Operação cancelada. Nenhum dado foi alterado.");
+    }
 
-            System.out.println("Resposta inválida. Digite S para sim ou N para não.");
-        }
+    private static void mostrarInfo(String mensagem) {
+        JOptionPane.showMessageDialog(null, mensagem, TITULO, JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private static void mostrarAviso(String mensagem) {
+        JOptionPane.showMessageDialog(null, mensagem, TITULO, JOptionPane.WARNING_MESSAGE);
+    }
+
+    private static void mostrarErro(String mensagem) {
+        JOptionPane.showMessageDialog(null, mensagem, TITULO, JOptionPane.ERROR_MESSAGE);
     }
 }

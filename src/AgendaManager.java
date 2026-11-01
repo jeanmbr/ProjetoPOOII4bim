@@ -1,128 +1,116 @@
+import java.sql.SQLException;
+
 public class AgendaManager {
-    private static Consulta[] agenda = new Consulta[10];
-    private static String[] horarios = {
+    private static final String[] HORARIOS = {
             "9:00", "9:30", "10:00", "10:30", "11:00",
             "11:30", "13:30", "14:00", "14:30", "15:00"
     };
 
-    private static boolean indiceValido(int indice) {
-        return indice >= 0 && indice < agenda.length;
-    }
-
-    public static boolean horarioOcupado(int indice) {
-        return indiceValido(indice) && agenda[indice] != null;
+    public static boolean indiceValido(int indice) {
+        return indice >= 0 && indice < HORARIOS.length;
     }
 
     public static String getHorarioTexto(int indice) {
         if (indiceValido(indice)) {
-            return horarios[indice];
+            return HORARIOS[indice];
         }
         return "Horário inválido";
     }
 
-    public static boolean estaVazia() {
-        for (int i = 0; i < agenda.length; i++) {
-            if (agenda[i] != null) {
+    private static void validarIndice(int indice) throws AgendaException {
+        if (!indiceValido(indice)) {
+            throw new AgendaException("Horário inválido. Escolha um número de 0 a 9.");
+        }
+    }
+
+    private static boolean estaCheia(Consulta[] agenda) {
+        for (Consulta consulta : agenda) {
+            if (consulta == null) {
                 return false;
             }
         }
         return true;
     }
 
-    public static boolean estaCheia() {
-        for (int i = 0; i < agenda.length; i++) {
-            if (agenda[i] == null) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    public static void agendar(int indice, Consulta consulta) {
-        if (!indiceValido(indice)) {
-            System.out.println("Erro: horário inválido.");
-        } else if (estaCheia()) {
-            System.out.println("A agenda está cheia. Não é possível cadastrar outra consulta.");
-        } else if (agenda[indice] != null) {
-            System.out.println("Este horário já está ocupado.");
-        } else if (consulta == null || !consulta.dadosValidos()) {
-            System.out.println("Erro: os dados da consulta são inválidos.");
-        } else if (consulta.getHorario() != indice + 1) {
-            System.out.println("Erro: o horário da consulta não corresponde à posição escolhida.");
-        } else {
-            agenda[indice] = consulta;
-            System.out.println("Consulta agendada com sucesso.");
+    private static void validarConsulta(Consulta consulta) throws AgendaException {
+        if (consulta == null || !consulta.dadosValidos()) {
+            throw new AgendaException("Os dados da consulta são inválidos.");
         }
     }
 
-    public static void editar(int indice, Animal pacienteAtualizado, String sintomasAtualizados) {
-        if (!indiceValido(indice)) {
-            System.out.println("Erro: horário inválido.");
-        } else if (agenda[indice] == null) {
-            System.out.println("Não existe consulta cadastrada neste horário.");
-        } else if (pacienteAtualizado == null || !pacienteAtualizado.dadosValidos()) {
-            System.out.println("Erro: os novos dados do paciente são inválidos.");
-        } else if (sintomasAtualizados == null || sintomasAtualizados.trim().length() == 0) {
-            System.out.println("Erro: a queixa principal não pode ficar vazia.");
-        } else {
-            agenda[indice].setPaciente(pacienteAtualizado);
-            agenda[indice].setSintomas(sintomasAtualizados);
-            System.out.println("Consulta atualizada com sucesso.");
+    public static void verificarAgendaNaoLotada() throws AgendaException, SQLException {
+        if (estaCheia(AgendaDAO.buscarAgenda())) {
+            throw new AgendaException("A agenda está lotada. Não há horários disponíveis.", true);
         }
     }
 
-    public static void excluir(int indice) {
-        if (!indiceValido(indice)) {
-            System.out.println("Erro: horário inválido.");
-        } else if (agenda[indice] == null) {
-            System.out.println("Não existe consulta cadastrada neste horário.");
-        } else {
-            agenda[indice] = null;
-            System.out.println("Consulta cancelada. O horário está disponível novamente.");
+    public static void verificarHorarioLivre(int indice) throws AgendaException, SQLException {
+        validarIndice(indice);
+        if (AgendaDAO.buscarAgenda()[indice] != null) {
+            throw new AgendaException("Este horário já está ocupado. Escolha outro.");
         }
     }
 
-    public static void listar() {
-        System.out.println();
-        System.out.println("========== AGENDA DO DIA ==========");
+    public static void agendar(Consulta consulta) throws AgendaException, SQLException {
+        validarConsulta(consulta);
+        verificarAgendaNaoLotada();
+        verificarHorarioLivre(consulta.getHorarioIndex());
+        AgendaDAO.salvar(consulta);
+    }
 
-        if (estaVazia()) {
-            System.out.println("Nenhum atendimento foi agendado para o dia.");
+    public static Consulta buscarConsultaOcupada(int indice) throws AgendaException, SQLException {
+        validarIndice(indice);
+        Consulta consulta = AgendaDAO.buscarAgenda()[indice];
+        if (consulta == null) {
+            throw new AgendaException("Este horário está vazio. Não há consulta cadastrada nele.", true);
         }
+        return consulta;
+    }
+
+    public static void alterar(Consulta consulta) throws AgendaException, SQLException {
+        validarConsulta(consulta);
+        buscarConsultaOcupada(consulta.getHorarioIndex());
+        if (AgendaDAO.atualizar(consulta) == 0) {
+            throw new AgendaException("Este horário está vazio. Nada foi alterado.", true);
+        }
+    }
+
+    public static void cancelar(int indice) throws AgendaException, SQLException {
+        validarIndice(indice);
+        if (AgendaDAO.cancelar(indice) == 0) {
+            throw new AgendaException("Este horário já está vazio. Não há consulta para cancelar.", true);
+        }
+    }
+
+    public static String montarTextoAgenda() throws SQLException {
+        Consulta[] agenda = AgendaDAO.buscarAgenda();
+        String texto = "";
+        boolean vazia = true;
 
         for (int i = 0; i < agenda.length; i++) {
-            System.out.println();
+            texto += i + " - " + HORARIOS[i] + " - ";
             if (agenda[i] == null) {
-                System.out.println((i + 1) + " - " + horarios[i] + " - [Disponível]");
+                texto += "[Disponível]\n";
             } else {
-                System.out.println((i + 1) + " - " + horarios[i] + " - [Ocupado]");
-                agenda[i].exibirDados();
+                texto += agenda[i].getResumo() + "\n";
+                vazia = false;
             }
         }
 
-        System.out.println("===================================");
+        if (vazia) {
+            texto += "\nNenhum atendimento foi agendado para o dia.";
+        }
+        return texto;
     }
 
-    public static void listarHorarios() {
-        System.out.println();
-        System.out.println("========== HORÁRIOS ==========");
+    public static String montarTextoHorariosLivres() throws SQLException {
+        Consulta[] agenda = AgendaDAO.buscarAgenda();
+        String texto = "";
         for (int i = 0; i < agenda.length; i++) {
             if (agenda[i] == null) {
-                System.out.println((i + 1) + " - " + horarios[i] + " - [Disponível]");
-            } else {
-                System.out.println((i + 1) + " - " + horarios[i] + " - [Ocupado]");
+                texto += i + " - " + HORARIOS[i] + "\n";
             }
         }
-        System.out.println("==============================");
-    }
-
-    public static void exibirConsulta(int indice) {
-        if (!indiceValido(indice)) {
-            System.out.println("Erro: horário inválido.");
-        } else if (agenda[indice] == null) {
-            System.out.println("Não existe consulta cadastrada neste horário.");
-        } else {
-            agenda[indice].exibirDados();
-        }
+        return texto;
     }
 }

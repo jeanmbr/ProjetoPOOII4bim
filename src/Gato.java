@@ -35,6 +35,11 @@ public class Gato extends Animal {
     }
 
     @Override
+    public String getCaracteristica() {
+        return temperamento;
+    }
+
+    @Override
     public String getInformacaoEspecifica() {
         return "Temperamento: " + temperamento;
     }
